@@ -45,7 +45,7 @@ Run detached from the terminal:
 setsid python3 knotifier.py >/dev/null 2>&1 &
 ```
 
-Or use the start script `knotifier-start_x.y.z.sh`. Put it in the same folder as `knotifier.py`, make it executable with `chmod +x`, and run it. It starts `knotifier.py` detached from the terminal.
+Or use the start script `knotifier.sh`. Put it in the same folder as `knotifier.py`, make it executable with `chmod +x`, and run it. It starts `knotifier.py` detached from the terminal.
 
 To stop the app, choose Quit in the tray menu, or run:
 
