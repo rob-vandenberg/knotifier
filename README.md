@@ -14,7 +14,41 @@ A system tray application for Linux (KDE Plasma) that listens on an HTTP port an
 8. Only one instance can run at a time.
 9. If the port is in use, the app retries every 3 seconds until it can bind.
 
-## Requirements
+## Installation
+
+The installer works on Kubuntu, Ubuntu and other Debian based systems (it needs `apt-get`). It installs everything knotifier needs that is missing, downloads the latest release of `knotifier.py` and `knotifier.sh` into `~/knotifier`, and makes the start script executable. It asks for your password (sudo) only when packages have to be installed.
+
+Download and run the installer with one command:
+
+```
+curl -fsSL https://github.com/rob-vandenberg/knotifier/releases/latest/download/knotifier-install.sh | sh
+```
+
+If you prefer to read the script before running it, download it first, then make it executable and run it:
+
+```
+curl -fsSLo knotifier-install.sh https://github.com/rob-vandenberg/knotifier/releases/latest/download/knotifier-install.sh
+chmod +x knotifier-install.sh
+./knotifier-install.sh
+```
+
+The installer does not start knotifier. Start it with:
+
+```
+~/knotifier/knotifier.sh
+```
+
+To install in another folder, put `KNOTIFIER_DIR=<folder>` in front of `sh`, for example:
+
+```
+curl -fsSL https://github.com/rob-vandenberg/knotifier/releases/latest/download/knotifier-install.sh | KNOTIFIER_DIR=~/apps/knotifier sh
+```
+
+## Manual installation
+
+Use this on systems without `apt-get`, or if you do not want to use the installer.
+
+Requirements:
 
 1. Linux with a desktop that provides a system tray (developed for Kubuntu / KDE Plasma).
 2. Python 3.
@@ -26,10 +60,7 @@ sudo apt install python3-pyqt6 python3-pyqt6.qtsvg libnotify-bin pulseaudio-util
 
 `libnotify-bin` provides `notify-send`, which is used to show the notification. If `notify-send` is not installed, the app falls back to the Qt tray balloon. `pulseaudio-utils` provides `paplay`, which plays the sound.
 
-## Installation
-
-1. Put `knotifier.py` in a folder of your choice, for example `~/knotifier`.
-2. Install the requirements (see above).
+Then put `knotifier.py` in a folder of your choice, for example `~/knotifier`, and run it as described below.
 
 ## Running
 
@@ -45,7 +76,7 @@ Run detached from the terminal:
 setsid python3 knotifier.py >/dev/null 2>&1 &
 ```
 
-Or use the start script `knotifier.sh`. Put it in the same folder as `knotifier.py`, make it executable with `chmod +x`, and run it. It starts `knotifier.py` detached from the terminal.
+Or use the start script `knotifier.sh`, which the installer puts next to `knotifier.py`. If you installed manually, copy it into the same folder as `knotifier.py` and make it executable with `chmod +x`. It starts `knotifier.py` detached from the terminal.
 
 To stop the app, choose Quit in the tray menu, or run:
 
