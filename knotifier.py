@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-# notifier.py
+# knotifier.py
 # System tray application for KDE Plasma / Linux (port of the Windows Notifier).
 # Listens for HTTP GET requests (e.g. from Home Assistant) and shows desktop
 # notifications with sound (priority != low) or silently (priority=low).
@@ -11,7 +11,7 @@
 # Dependencies (Kubuntu):
 #   sudo apt install python3-pyqt6 python3-pyqt6.qtsvg libnotify-bin pulseaudio-utils
 # Run:
-#   python3 notifier.py
+#   python3 knotifier.py
 
 import configparser
 import datetime
@@ -30,7 +30,7 @@ from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QLabel, QMenu,
                              QPushButton, QSystemTrayIcon, QVBoxLayout)
 
-__version__ = 'knotifier 1.0.1'
+__version__ = 'knotifier 1.0.2'
 
 
 def version():
@@ -38,12 +38,13 @@ def version():
 
 
 # --- Version history ----------------------------------------------------
+# v1.0.2: Application name shown as knotifier instead of Notifier
 # v1.0.1: Tray icon turns red when a new notification arrives and returns to
 #         normal when the menu is opened
 # v1.0.0: Initial release of the Linux/KDE port of Notifier (Windows)
 
 VERSION = __version__.split()[-1]
-APP_NAME = "Notifier"
+APP_NAME = "knotifier"
 HTTP_PORT_DEF = 8765
 CLIENT_TIMEOUT_S = 5
 MAX_NOTIFICATIONS = 11
@@ -89,7 +90,7 @@ def autostart_set(enable):
             f.write(
                 "[Desktop Entry]\n"
                 "Type=Application\n"
-                "Name=Notifier\n"
+                "Name=knotifier\n"
                 "Comment=Home Assistant notification receiver\n"
                 f"Exec={sys.executable} {SCRIPT_PATH}\n"
                 "Icon=preferences-desktop-notification\n"
@@ -226,7 +227,7 @@ def show_desktop_notification(title, message, silent, tray):
 class AboutDialog(QDialog):
     def __init__(self, port):
         super().__init__()
-        self.setWindowTitle("About Notifier")
+        self.setWindowTitle(f"About {APP_NAME}")
         layout = QVBoxLayout(self)
         layout.setSpacing(8)
 
@@ -252,7 +253,7 @@ class AboutDialog(QDialog):
         example.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(example)
 
-        url = f"http://localhost:{port}/?title=Notifier&message=Hello+world!&priority=high"
+        url = f"http://localhost:{port}/?title=knotifier&message=Hello+world!&priority=high"
         link = QLabel(f'<a href="{url}">{url.replace("&", "&amp;")}</a>')
         link.setTextFormat(Qt.TextFormat.RichText)
         link.setOpenExternalLinks(True)      # clicking fires a real notification
@@ -452,7 +453,7 @@ def main():
     lock = QLockFile(os.path.join(QDir.tempPath(), "notifier-tray.lock"))
     lock.setStaleLockTime(0)
     if not lock.tryLock(100):
-        print("Notifier is already running.", file=sys.stderr)
+        print(f"{APP_NAME} is already running.", file=sys.stderr)
         return 0
 
     if not QSystemTrayIcon.isSystemTrayAvailable():
