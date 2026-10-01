@@ -64,19 +64,19 @@ Then put `knotifier.py` in a folder of your choice, for example `~/knotifier`, a
 
 ## Running
 
-Run in a terminal:
+Start knotifier detached from the terminal with the start script:
+
+```
+~/knotifier/knotifier.sh
+```
+
+`knotifier.sh` is installed next to `knotifier.py`. If you installed manually, copy it into the same folder as `knotifier.py` and make it executable with `chmod +x`.
+
+To see error messages, run knotifier in a terminal instead:
 
 ```
 python3 knotifier.py
 ```
-
-Run detached from the terminal:
-
-```
-setsid python3 knotifier.py >/dev/null 2>&1 &
-```
-
-Or use the start script `knotifier.sh`, which the installer puts next to `knotifier.py`. If you installed manually, copy it into the same folder as `knotifier.py` and make it executable with `chmod +x`. It starts `knotifier.py` detached from the terminal.
 
 To stop the app, choose Quit in the tray menu, or run:
 
