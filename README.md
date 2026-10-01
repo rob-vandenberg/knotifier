@@ -21,7 +21,7 @@ A system tray application for Linux (KDE Plasma) that listens on an HTTP port an
 3. The packages named in the header of the script:
 
 ```
-sudo apt install python3-pyqt6 libnotify-bin pulseaudio-utils
+sudo apt install python3-pyqt6 python3-pyqt6.qtsvg libnotify-bin pulseaudio-utils
 ```
 
 `libnotify-bin` provides `notify-send`, which is used to show the notification. If `notify-send` is not installed, the app falls back to the Qt tray balloon. `pulseaudio-utils` provides `paplay`, which plays the sound.

@@ -9,7 +9,7 @@
 # single instance.
 #
 # Dependencies (Kubuntu):
-#   sudo apt install python3-pyqt6 libnotify-bin pulseaudio-utils
+#   sudo apt install python3-pyqt6 python3-pyqt6.qtsvg libnotify-bin pulseaudio-utils
 # Run:
 #   python3 notifier.py
 
@@ -23,12 +23,14 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
-from PyQt6.QtCore import QDir, QFileSystemWatcher, QLockFile, QObject, Qt, QTimer, pyqtSignal
+from PyQt6.QtCore import (QByteArray, QDir, QFileSystemWatcher, QLockFile, QObject, Qt,
+                          QTimer, pyqtSignal)
 from PyQt6.QtGui import QAction, QColor, QCursor, QFont, QIcon, QPainter, QPixmap
+from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QLabel, QMenu,
                              QPushButton, QSystemTrayIcon, QVBoxLayout)
 
-__version__ = 'knotifier 1.0.0'
+__version__ = 'knotifier 1.0.1'
 
 
 def version():
@@ -36,6 +38,8 @@ def version():
 
 
 # --- Version history ----------------------------------------------------
+# v1.0.1: Tray icon turns red when a new notification arrives and returns to
+#         normal when the menu is opened
 # v1.0.0: Initial release of the Linux/KDE port of Notifier (Windows)
 
 VERSION = __version__.split()[-1]
@@ -269,19 +273,53 @@ class AboutDialog(QDialog):
 # ----------------------------------------------------------------------------
 # Tray application
 # ----------------------------------------------------------------------------
-def make_icon():
-    icon = QIcon.fromTheme("preferences-desktop-notification")
-    if not icon.isNull():
-        return icon
-    pm = QPixmap(64, 64)
-    pm.fill(Qt.GlobalColor.transparent)
-    p = QPainter(pm)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    p.setBrush(QColor(255, 200, 0))
-    p.setPen(Qt.PenStyle.NoPen)
-    p.drawEllipse(8, 8, 48, 48)
-    p.end()
-    return QIcon(pm)
+# Bell icon. The outline is the "notifications" bell of the KDE Breeze icon
+# theme (Copyright (C) 2014 Uri Herrera and others, LGPL-3.0-or-later).
+# It is always drawn in white. BELL_FILL is the inside of the bell; it is only
+# drawn, in red, in the alert icon.
+BELL_OUTLINE = (
+    "m10.269531 17a2 2 0 0 0-0.2695312 1 2 2 0 0 0 2 2 2 2 0 0 0 2-2 "
+    "2 2 0 0 0-0.271484-1z"
+    "m1.7304688-13a1 1 0 0 0-1 1 1 1 0 0 0 0.0098 0.1289062 3.9999999 "
+    "3.9999999 0 0 0-3.0098 3.8710938c0 3-1 4-3 6v1h14v-1c-2-2-3-3-3-6a"
+    "3.9999999 3.9999999 0 0 0-3.009766-3.8710938 1 1 0 0 0 0.009766-0.1289062 "
+    "1 1 0 0 0-1-1z"
+    "m0 2a3 3 0 0 1 3 3c0 3 0.585938 4 2.585938 6h-11.171876c2-2 2.5859375-3 "
+    "2.5859375-6a3 3 0 0 1 3-3z"
+)
+BELL_FILL = ("M12 6a3 3 0 0 1 3 3c0 3 0.585938 4 2.585938 6h-11.171876c2-2 "
+             "2.5859375-3 2.5859375-6a3 3 0 0 1 3-3z")
+BELL_COLOR_LINE = "#ffffff"
+BELL_COLOR_ALERT = "#e03131"
+BELL_SVG_NORMAL = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">'
+    f'<path d="{BELL_OUTLINE}" fill="{BELL_COLOR_LINE}" fill-rule="evenodd"/>'
+    '</svg>'
+)
+BELL_SVG_ALERT = (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">'
+    f'<path d="{BELL_FILL}" fill="{BELL_COLOR_ALERT}"/>'
+    f'<path d="{BELL_OUTLINE}" fill="{BELL_COLOR_LINE}" fill-rule="evenodd"/>'
+    '</svg>'
+)
+
+
+def svg_icon(svg):
+    renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
+    icon = QIcon()
+    for size in (16, 22, 24, 32, 48, 64):
+        pm = QPixmap(size, size)
+        pm.fill(Qt.GlobalColor.transparent)
+        p = QPainter(pm)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        renderer.render(p)
+        p.end()
+        icon.addPixmap(pm)
+    return icon
+
+
+def make_icon(alert=False):
+    return svg_icon(BELL_SVG_ALERT if alert else BELL_SVG_NORMAL)
 
 
 class TrayApp(QObject):
@@ -293,7 +331,9 @@ class TrayApp(QObject):
         self.service = HttpService()
         self.port = load_port()
 
-        self.tray = QSystemTrayIcon(make_icon())
+        self.icon_normal = make_icon()
+        self.icon_alert = make_icon(alert=True)
+        self.tray = QSystemTrayIcon(self.icon_normal)
         self.tray.setToolTip(APP_NAME)
         self.menu = QMenu()
         self.menu.aboutToShow.connect(self.rebuild_menu)
@@ -345,9 +385,11 @@ class TrayApp(QObject):
         self.notifications.insert(0, (title, message, stamp, silent))
         del self.notifications[MAX_NOTIFICATIONS:]
         show_desktop_notification(title, message, silent, self.tray)
+        self.tray.setIcon(self.icon_alert)
 
     # -- menu ---------------------------------------------------------------
     def rebuild_menu(self):
+        self.tray.setIcon(self.icon_normal)
         self.menu.clear()
         header = QAction(f"{APP_NAME} {VERSION}", self.menu)
         header.setEnabled(False)
