@@ -30,7 +30,7 @@ from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QLabel, QMenu,
                              QPushButton, QSystemTrayIcon, QVBoxLayout)
 
-__version__ = 'knotifier 1.0.2'
+__version__ = 'knotifier 1.0.3'
 
 
 def version():
@@ -38,6 +38,7 @@ def version():
 
 
 # --- Version history ----------------------------------------------------
+# v1.0.3: Bell icon enlarged to 17.5 x 20 pixels inside the 22 x 22 pixel area
 # v1.0.2: Application name shown as knotifier instead of Notifier
 # v1.0.1: Tray icon turns red when a new notification arrives and returns to
 #         normal when the menu is opened
@@ -293,12 +294,12 @@ BELL_FILL = ("M12 6a3 3 0 0 1 3 3c0 3 0.585938 4 2.585938 6h-11.171876c2-2 "
 BELL_COLOR_LINE = "#ffffff"
 BELL_COLOR_ALERT = "#e03131"
 BELL_SVG_NORMAL = (
-    '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">'
+    '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="3.2 3.2 17.6 17.6">'
     f'<path d="{BELL_OUTLINE}" fill="{BELL_COLOR_LINE}" fill-rule="evenodd"/>'
     '</svg>'
 )
 BELL_SVG_ALERT = (
-    '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 22 22">'
+    '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="3.2 3.2 17.6 17.6">'
     f'<path d="{BELL_FILL}" fill="{BELL_COLOR_ALERT}"/>'
     f'<path d="{BELL_OUTLINE}" fill="{BELL_COLOR_LINE}" fill-rule="evenodd"/>'
     '</svg>'
