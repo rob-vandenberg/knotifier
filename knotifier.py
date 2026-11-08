@@ -30,7 +30,7 @@ from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QLabel, QMenu,
                              QPushButton, QSystemTrayIcon, QVBoxLayout)
 
-__version__ = 'knotifier 1.0.5'
+__version__ = 'knotifier 1.0.6'
 
 
 def version():
@@ -38,6 +38,7 @@ def version():
 
 
 # --- Version history ----------------------------------------------------
+# v1.0.6: A hyphen between the time and the message in the tray menu
 # v1.0.5: Own icon knotifier.svg for the start menu entry made by the installer
 # v1.0.4: Notifications in the tray menu no longer grey, the time in front of
 #         the message without indent, the inside of the bell yellow while unread,
@@ -424,7 +425,7 @@ class TrayApp(QObject):
                 msg = " ".join(message.split())
                 if len(msg) > MAX_MESSAGE_CHARS:
                     msg = msg[:MAX_MESSAGE_CHARS - 1] + "\u2026"
-                a2 = QAction(f"{stamp} {msg}", self.menu)
+                a2 = QAction(f"{stamp} - {msg}", self.menu)
                 self.menu.addAction(a2)
                 if i < len(self.notifications) - 1:
                     self.menu.addSeparator()
