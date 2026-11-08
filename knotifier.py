@@ -30,7 +30,7 @@ from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QLabel, QMenu,
                              QPushButton, QSystemTrayIcon, QVBoxLayout)
 
-__version__ = 'knotifier 1.0.4'
+__version__ = 'knotifier 1.0.5'
 
 
 def version():
@@ -38,6 +38,7 @@ def version():
 
 
 # --- Version history ----------------------------------------------------
+# v1.0.5: Own icon knotifier.svg for the start menu entry made by the installer
 # v1.0.4: Notifications in the tray menu no longer grey, the time in front of
 #         the message without indent, the inside of the bell yellow while unread,
 #         the left-click menu opens above the panel instead of over it, and the

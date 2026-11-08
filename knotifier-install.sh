@@ -7,9 +7,10 @@
 #   KNOTIFIER_DIR=/some/folder ./knotifier-install.sh
 
 # --- Version ------------------------------------------------------------
-VERSION="knotifier-install 1.0.2"
+VERSION="knotifier-install 1.0.3"
 
 # --- Version history ----------------------------------------------------
+# v1.0.3: Install knotifier's own icon and use it for the start menu entry
 # v1.0.2: Create a start menu entry for knotifier
 # v1.0.1: Install the latest release of knotifier instead of the main branch
 # v1.0.0: Initial release
@@ -19,7 +20,7 @@ set -u
 LATEST_URL="https://api.github.com/repos/rob-vandenberg/knotifier/releases/latest"
 REPO_RAW_BASE="https://raw.githubusercontent.com/rob-vandenberg/knotifier"
 INSTALL_DIR="${KNOTIFIER_DIR:-$HOME/knotifier}"
-FILES="knotifier.py knotifier.sh"
+FILES="knotifier.py knotifier.sh knotifier.svg"
 SOUND_FILES="/usr/share/sounds/freedesktop/stereo/message.oga
 /usr/share/sounds/freedesktop/stereo/message-new-instant.oga
 /usr/share/sounds/freedesktop/stereo/bell.oga"
@@ -198,6 +199,10 @@ install -m 755 "$TMP/knotifier.sh" "$INSTALL_DIR/knotifier.sh" || exit 1
 
 
 # --- Start menu entry ---------------------------------------------------
+ICON_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/icons/hicolor/scalable/apps"
+mkdir -p "$ICON_DIR" || exit 1
+install -m 644 "$TMP/knotifier.svg" "$ICON_DIR/knotifier.svg" || exit 1
+
 APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
 mkdir -p "$APPS_DIR" || exit 1
 cat > "$APPS_DIR/knotifier.desktop" <<EOF || exit 1
@@ -206,7 +211,7 @@ Type=Application
 Name=knotifier
 Comment=Home Assistant notification receiver
 Exec="$INSTALL_DIR/knotifier.sh"
-Icon=preferences-desktop-notification
+Icon=knotifier
 Categories=Utility;
 Terminal=false
 EOF
