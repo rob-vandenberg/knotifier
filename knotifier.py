@@ -23,14 +23,14 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
-from PyQt6.QtCore import (QByteArray, QDir, QFileSystemWatcher, QLockFile, QObject, Qt,
-                          QTimer, pyqtSignal)
+from PyQt6.QtCore import (QByteArray, QDir, QFileSystemWatcher, QLockFile, QObject, QPoint,
+                          Qt, QTimer, pyqtSignal)
 from PyQt6.QtGui import QAction, QColor, QCursor, QFont, QIcon, QPainter, QPixmap
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QLabel, QMenu,
                              QPushButton, QSystemTrayIcon, QVBoxLayout)
 
-__version__ = 'knotifier 1.0.3'
+__version__ = 'knotifier 1.0.4'
 
 
 def version():
@@ -38,6 +38,10 @@ def version():
 
 
 # --- Version history ----------------------------------------------------
+# v1.0.4: Notifications in the tray menu no longer grey, the time in front of
+#         the message without indent, the inside of the bell yellow while unread,
+#         the left-click menu opens above the panel instead of over it, and the
+#         menu is rebuilt only when a notification arrives, not when it opens
 # v1.0.3: Bell icon enlarged to 17.5 x 20 pixels inside the 22 x 22 pixel area
 # v1.0.2: Application name shown as knotifier instead of Notifier
 # v1.0.1: Tray icon turns red when a new notification arrives and returns to
@@ -278,7 +282,7 @@ class AboutDialog(QDialog):
 # Bell icon. The outline is the "notifications" bell of the KDE Breeze icon
 # theme (Copyright (C) 2014 Uri Herrera and others, LGPL-3.0-or-later).
 # It is always drawn in white. BELL_FILL is the inside of the bell; it is only
-# drawn, in red, in the alert icon.
+# drawn, in yellow, in the alert icon.
 BELL_OUTLINE = (
     "m10.269531 17a2 2 0 0 0-0.2695312 1 2 2 0 0 0 2 2 2 2 0 0 0 2-2 "
     "2 2 0 0 0-0.271484-1z"
@@ -292,7 +296,7 @@ BELL_OUTLINE = (
 BELL_FILL = ("M12 6a3 3 0 0 1 3 3c0 3 0.585938 4 2.585938 6h-11.171876c2-2 "
              "2.5859375-3 2.5859375-6a3 3 0 0 1 3-3z")
 BELL_COLOR_LINE = "#ffffff"
-BELL_COLOR_ALERT = "#e03131"
+BELL_COLOR_ALERT = "#ffcc00"
 BELL_SVG_NORMAL = (
     '<svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="3.2 3.2 17.6 17.6">'
     f'<path d="{BELL_OUTLINE}" fill="{BELL_COLOR_LINE}" fill-rule="evenodd"/>'
@@ -338,7 +342,10 @@ class TrayApp(QObject):
         self.tray = QSystemTrayIcon(self.icon_normal)
         self.tray.setToolTip(APP_NAME)
         self.menu = QMenu()
-        self.menu.aboutToShow.connect(self.rebuild_menu)
+        # The menu is rebuilt only when its content changes. Rebuilding it
+        # while it opens sends Plasma a new menu while Plasma places it.
+        self.rebuild_menu()
+        self.menu.aboutToShow.connect(self.on_menu_about_to_show)
         self.tray.setContextMenu(self.menu)
         self.tray.activated.connect(self.on_activated)
         self.tray.show()
@@ -387,11 +394,14 @@ class TrayApp(QObject):
         self.notifications.insert(0, (title, message, stamp, silent))
         del self.notifications[MAX_NOTIFICATIONS:]
         show_desktop_notification(title, message, silent, self.tray)
+        self.rebuild_menu()
         self.tray.setIcon(self.icon_alert)
 
     # -- menu ---------------------------------------------------------------
-    def rebuild_menu(self):
+    def on_menu_about_to_show(self):
         self.tray.setIcon(self.icon_normal)
+
+    def rebuild_menu(self):
         self.menu.clear()
         header = QAction(f"{APP_NAME} {VERSION}", self.menu)
         header.setEnabled(False)
@@ -408,14 +418,12 @@ class TrayApp(QObject):
         else:
             for i, (title, message, stamp, silent) in enumerate(self.notifications):
                 bell = "" if silent else "\U0001F514 "
-                a1 = QAction(f"{bell}{title}   [{stamp}]", self.menu)
-                a1.setEnabled(False)
+                a1 = QAction(f"{bell}{title}", self.menu)
                 self.menu.addAction(a1)
                 msg = " ".join(message.split())
                 if len(msg) > MAX_MESSAGE_CHARS:
                     msg = msg[:MAX_MESSAGE_CHARS - 1] + "\u2026"
-                a2 = QAction("    " + msg, self.menu)
-                a2.setEnabled(False)
+                a2 = QAction(f"{stamp} {msg}", self.menu)
                 self.menu.addAction(a2)
                 if i < len(self.notifications) - 1:
                     self.menu.addSeparator()
@@ -434,7 +442,17 @@ class TrayApp(QObject):
         # opens the same menu.
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
             self.rebuild_menu()
-            self.menu.popup(QCursor.pos())
+            # Open the menu above the click, with its bottom at the mouse or
+            # at the top of the panel, whichever is higher. Left to itself,
+            # Qt only keeps the menu inside the whole screen, so it covers
+            # the panel.
+            cursor = QCursor.pos()
+            screen = QApplication.screenAt(cursor) or QApplication.primaryScreen()
+            free = screen.availableGeometry()
+            self.menu.ensurePolished()
+            height = self.menu.sizeHint().height()
+            bottom = min(cursor.y(), free.bottom() + 1)
+            self.menu.popup(QPoint(cursor.x(), bottom - height))
 
     def show_about(self):
         if self.about is not None and self.about.isVisible():
