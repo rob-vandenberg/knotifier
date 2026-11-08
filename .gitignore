@@ -1,0 +1,10 @@
+gitpush.sh
+build-release.sh
+CLAUDE.md
+.claude/
+__pycache__/
+backup/
+screenshots/
+knotifier-install_1.0.1.sh
+alert.svg
+normal.svg

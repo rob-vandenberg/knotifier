@@ -14,6 +14,7 @@
 #   python3 knotifier.py
 
 import configparser
+import ctypes
 import datetime
 import os
 import shutil
@@ -30,7 +31,7 @@ from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QLabel, QMenu,
                              QPushButton, QSystemTrayIcon, QVBoxLayout)
 
-__version__ = 'knotifier 1.0.6'
+__version__ = 'knotifier 1.0.7'
 
 
 def version():
@@ -38,6 +39,7 @@ def version():
 
 
 # --- Version history ----------------------------------------------------
+# v1.0.7: Under Wayland a left click opens the menu through Plasma, like a right click
 # v1.0.6: A hyphen between the time and the message in the tray menu
 # v1.0.5: Own icon knotifier.svg for the start menu entry made by the installer
 # v1.0.4: Notifications in the tray menu no longer grey, the time in front of
@@ -326,6 +328,39 @@ def svg_icon(svg):
     return icon
 
 
+def let_plasma_open_menu_on_left_click(tray):
+    """Under Wayland the app may not open a menu itself after a click on the
+    panel: Qt refuses a popup without a window of its own that was clicked.
+    Marking the tray item as a menu (ItemIsMenu) makes Plasma open the
+    exported menu on a left click, as it does on a right click. KDE's tray
+    plugin has no call for this, so the KStatusNotifierItem it created is
+    found on its D-Bus connection and its setIsMenu is called directly.
+    Returns False when that is not possible; the left click then stays as it
+    is."""
+    try:
+        from PyQt6 import sip
+        from PyQt6.QtDBus import QDBusConnection
+        conn = QDBusConnection(f"org.kde.StatusNotifierItem-{os.getpid()}-1")
+        if not conn.isConnected():
+            return False
+        dbus_object = conn.objectRegisteredAt("/StatusNotifierItem")
+        item = dbus_object.parent() if dbus_object is not None else None
+        if item is None or item.metaObject().className() != "KStatusNotifierItem":
+            return False
+        library = ctypes.CDLL("libKF6StatusNotifierItem.so.6")
+        set_is_menu = library._ZN19KStatusNotifierItem9setIsMenuEb
+        set_is_menu.argtypes = [ctypes.c_void_p, ctypes.c_bool]
+        set_is_menu.restype = None
+        set_is_menu(sip.unwrapinstance(item), True)
+    except (ImportError, OSError, AttributeError):
+        return False
+    # A changed tooltip makes Plasma read the item's properties again
+    tip = tray.toolTip()
+    tray.setToolTip(tip + " ")
+    tray.setToolTip(tip)
+    return True
+
+
 def make_icon(alert=False):
     return svg_icon(BELL_SVG_ALERT if alert else BELL_SVG_NORMAL)
 
@@ -351,6 +386,8 @@ class TrayApp(QObject):
         self.tray.setContextMenu(self.menu)
         self.tray.activated.connect(self.on_activated)
         self.tray.show()
+        if self.app.platformName() == "wayland":
+            let_plasma_open_menu_on_left_click(self.tray)
 
         BRIDGE.notification.connect(self.on_notification)
         BRIDGE.quit_requested.connect(self.app.quit)
