@@ -7,9 +7,10 @@
 #   KNOTIFIER_DIR=/some/folder ./knotifier-install.sh
 
 # --- Version ------------------------------------------------------------
-VERSION="knotifier-install 1.0.1"
+VERSION="knotifier-install 1.0.2"
 
 # --- Version history ----------------------------------------------------
+# v1.0.2: Create a start menu entry for knotifier
 # v1.0.1: Install the latest release of knotifier instead of the main branch
 # v1.0.0: Initial release
 
@@ -174,6 +175,8 @@ REPO_RAW="$REPO_RAW_BASE/$TAG"
 
 echo "Installing knotifier in $INSTALL_DIR"
 mkdir -p "$INSTALL_DIR" || exit 1
+# The start menu entry needs the full path of the install folder.
+INSTALL_DIR="$(cd "$INSTALL_DIR" && pwd)" || exit 1
 
 TMP="$(mktemp -d)" || exit 1
 trap 'rm -rf "$TMP"' EXIT
@@ -192,6 +195,22 @@ fi
 
 install -m 644 "$TMP/knotifier.py" "$INSTALL_DIR/knotifier.py" || exit 1
 install -m 755 "$TMP/knotifier.sh" "$INSTALL_DIR/knotifier.sh" || exit 1
+
+
+# --- Start menu entry ---------------------------------------------------
+APPS_DIR="${XDG_DATA_HOME:-$HOME/.local/share}/applications"
+mkdir -p "$APPS_DIR" || exit 1
+cat > "$APPS_DIR/knotifier.desktop" <<EOF || exit 1
+[Desktop Entry]
+Type=Application
+Name=knotifier
+Comment=Home Assistant notification receiver
+Exec="$INSTALL_DIR/knotifier.sh"
+Icon=preferences-desktop-notification
+Categories=Utility;
+Terminal=false
+EOF
+echo "Start menu entry created: $APPS_DIR/knotifier.desktop"
 
 echo "knotifier is installed in $INSTALL_DIR"
 echo "Start it with: $INSTALL_DIR/knotifier.sh"

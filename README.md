@@ -32,7 +32,9 @@ chmod +x knotifier-install.sh
 ./knotifier-install.sh
 ```
 
-The installer does not start knotifier. Start it with:
+The installer also creates a start menu entry for knotifier, under Utilities.
+
+The installer does not start knotifier. Start it from the start menu, or with:
 
 ```
 ~/knotifier/knotifier.sh
