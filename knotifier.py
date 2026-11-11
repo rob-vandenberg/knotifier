@@ -31,7 +31,7 @@ from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QLabel, QMenu,
                              QPushButton, QSystemTrayIcon, QVBoxLayout)
 
-__version__ = 'knotifier 1.0.7'
+__version__ = 'knotifier 1.0.8'
 
 
 def version():
@@ -39,6 +39,7 @@ def version():
 
 
 # --- Version history ----------------------------------------------------
+# v1.0.8: No code change: released with the new Chrono-style start menu icon
 # v1.0.7: Under Wayland a left click opens the menu through Plasma, like a right click
 # v1.0.6: A hyphen between the time and the message in the tray menu
 # v1.0.5: Own icon knotifier.svg for the start menu entry made by the installer
