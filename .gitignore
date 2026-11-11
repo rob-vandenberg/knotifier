@@ -1,5 +1,6 @@
 gitpush.sh
 build-release.sh
+install.sh
 CLAUDE.md
 .claude/
 __pycache__/
