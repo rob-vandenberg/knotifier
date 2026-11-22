@@ -25,13 +25,15 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlsplit
 
 from PyQt6.QtCore import (QByteArray, QDir, QFileSystemWatcher, QLockFile, QObject, QPoint,
-                          Qt, QTimer, pyqtSignal)
+                          QSocketNotifier, Qt, QTimer, pyqtClassInfo, pyqtProperty, pyqtSignal, pyqtSlot)
+from PyQt6.QtDBus import (QDBusConnection, QDBusMessage, QDBusObjectPath,
+                          QDBusServiceWatcher)
 from PyQt6.QtGui import QAction, QColor, QCursor, QFont, QIcon, QPainter, QPixmap
 from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QLabel, QMenu,
                              QPushButton, QSystemTrayIcon, QVBoxLayout)
 
-__version__ = 'knotifier 1.0.9'
+__version__ = 'knotifier 1.0.12'
 
 
 def version():
@@ -39,6 +41,11 @@ def version():
 
 
 # --- Version history ----------------------------------------------------
+# v1.0.12: Under X11 the menu closes on a click outside it or on the tray icon,
+#          also while another program (such as KRDC) holds the mouse and keyboard
+# v1.0.11: Under X11 the app registers its own tray item, so a right click opens
+#          the same menu as a left click, above the panel
+# v1.0.10: Under X11 a left click opens the app's own menu again, above the panel
 # v1.0.9: Under X11 too a left click opens the menu through Plasma, like a right click
 # v1.0.8: No code change: released with the new Chrono-style start menu icon
 # v1.0.7: Under Wayland a left click opens the menu through Plasma, like a right click
@@ -338,9 +345,7 @@ def let_plasma_open_menu_on_left_click(tray):
     plugin has no call for this, so the KStatusNotifierItem it created is
     found on its D-Bus connection and its setIsMenu is called directly.
     Returns False when that is not possible; the left click then stays as it
-    is. Under X11 it is used as well: the menu the app opens itself there
-    sometimes stops closing on a click outside it after a notification has
-    arrived, while the menu Plasma opens always closes."""
+    is."""
     try:
         from PyQt6 import sip
         from PyQt6.QtDBus import QDBusConnection
@@ -369,6 +374,238 @@ def make_icon(alert=False):
     return svg_icon(BELL_SVG_ALERT if alert else BELL_SVG_NORMAL)
 
 
+TRAY_ICON_DIR = os.path.expanduser("~/.cache/knotifier/icons")
+TRAY_ICON_NAMES = {False: "knotifierbell", True: "knotifierbellalert"}
+SNI_INTERFACE = "org.kde.StatusNotifierItem"
+SNI_PATH = "/StatusNotifierItem"
+SNI_WATCHER = "org.kde.StatusNotifierWatcher"
+
+
+def write_tray_icons():
+    folder = os.path.join(TRAY_ICON_DIR, "hicolor", "scalable", "apps")
+    os.makedirs(folder, exist_ok=True)
+    for alert, name in TRAY_ICON_NAMES.items():
+        with open(os.path.join(folder, name + ".svg"), "w", encoding="utf-8") as f:
+            f.write(BELL_SVG_ALERT if alert else BELL_SVG_NORMAL)
+
+
+@pyqtClassInfo("D-Bus Interface", SNI_INTERFACE)
+class PlasmaTrayItem(QObject):
+    """The tray icon under X11, registered with Plasma directly.
+    KDE's own tray item always hands Plasma a menu: Plasma then draws it
+    itself at the click, over the panel, and a right click never reaches the
+    app. This item has no menu, so Plasma passes a left and a right click on
+    (Activate, ContextMenu) and the app opens its menu itself, above the
+    panel."""
+    clicked = pyqtSignal()
+
+    def __init__(self):
+        super().__init__()
+        self.alert = False
+        self.bus = QDBusConnection.sessionBus()
+        self.name = f"org.kde.StatusNotifierItem-{os.getpid()}-1"
+        self.watch = None
+
+    def start(self):
+        """Returns False when Plasma's tray cannot be reached this way."""
+        try:
+            write_tray_icons()
+        except OSError:
+            return False
+        if not self.bus.isConnected() or not self.bus.registerService(self.name):
+            return False
+        options = (QDBusConnection.RegisterOption.ExportAllSlots
+                   | QDBusConnection.RegisterOption.ExportAllProperties)
+        if not self.bus.registerObject(SNI_PATH, self, options):
+            self.bus.unregisterService(self.name)
+            return False
+        if not self.register():
+            self.bus.unregisterObject(SNI_PATH)
+            self.bus.unregisterService(self.name)
+            return False
+        # After a restart of plasmashell the tray has to be told again
+        self.watch = QDBusServiceWatcher(
+            SNI_WATCHER, self.bus,
+            QDBusServiceWatcher.WatchModeFlag.WatchForRegistration, self)
+        self.watch.serviceRegistered.connect(lambda _name: self.register())
+        return True
+
+    def register(self):
+        msg = QDBusMessage.createMethodCall(SNI_WATCHER, "/StatusNotifierWatcher",
+                                            SNI_WATCHER, "RegisterStatusNotifierItem")
+        msg.setArguments([self.name])
+        return self.bus.call(msg).type() == QDBusMessage.MessageType.ReplyMessage
+
+    def set_alert(self, alert):
+        if alert != self.alert:
+            self.alert = alert
+            self.bus.send(QDBusMessage.createSignal(SNI_PATH, SNI_INTERFACE, "NewIcon"))
+
+    # -- D-Bus properties and methods read and called by Plasma --------------
+    @pyqtProperty(str)
+    def Category(self):
+        return "ApplicationStatus"
+
+    @pyqtProperty(str)
+    def Id(self):
+        return APP_NAME
+
+    @pyqtProperty(str)
+    def Title(self):
+        return APP_NAME
+
+    @pyqtProperty(str)
+    def Status(self):
+        return "Active"
+
+    @pyqtProperty(str)
+    def IconName(self):
+        return TRAY_ICON_NAMES[self.alert]
+
+    @pyqtProperty(str)
+    def IconThemePath(self):
+        return TRAY_ICON_DIR
+
+    @pyqtProperty(bool)
+    def ItemIsMenu(self):
+        return False
+
+    @pyqtProperty(QDBusObjectPath)
+    def Menu(self):
+        return QDBusObjectPath("/NO_DBUSMENU")
+
+    @pyqtSlot(int, int)
+    def Activate(self, _x, _y):
+        self.clicked.emit()
+
+    @pyqtSlot(int, int)
+    def ContextMenu(self, _x, _y):
+        self.clicked.emit()
+
+    @pyqtSlot(int, int)
+    def SecondaryActivate(self, _x, _y):
+        pass
+
+
+class _XIEventMask(ctypes.Structure):
+    _fields_ = [("deviceid", ctypes.c_int), ("mask_len", ctypes.c_int),
+                ("mask", ctypes.POINTER(ctypes.c_ubyte))]
+
+
+class _XGenericEventCookie(ctypes.Structure):
+    _fields_ = [("type", ctypes.c_int), ("serial", ctypes.c_ulong),
+                ("send_event", ctypes.c_int), ("display", ctypes.c_void_p),
+                ("extension", ctypes.c_int), ("evtype", ctypes.c_int),
+                ("cookie", ctypes.c_uint), ("data", ctypes.c_void_p)]
+
+
+class _XIRawEvent(ctypes.Structure):
+    _fields_ = [("type", ctypes.c_int), ("serial", ctypes.c_ulong),
+                ("send_event", ctypes.c_int), ("display", ctypes.c_void_p),
+                ("extension", ctypes.c_int), ("evtype", ctypes.c_int),
+                ("time", ctypes.c_ulong), ("deviceid", ctypes.c_int),
+                ("sourceid", ctypes.c_int), ("detail", ctypes.c_int)]
+
+
+class _XEvent(ctypes.Union):
+    _fields_ = [("type", ctypes.c_int), ("cookie", _XGenericEventCookie),
+                ("pad", ctypes.c_long * 24)]
+
+
+class MousePressWatch(QObject):
+    """Reports every mouse button press on the X11 screen, wherever it lands.
+    A menu the app opens itself only sees a click outside it while it holds
+    the mouse (an X11 grab), and X11 allows one grab at a time: while another
+    program holds one, such as a remote desktop window that grabs the
+    keyboard, the menu opens without it and never closes on a click outside
+    it. Raw input events reach every program that asks for them, grab or no
+    grab, so the app can close its menu itself."""
+    pressed = pyqtSignal()
+
+    GENERIC_EVENT = 35
+    XI_RAW_BUTTON_PRESS = 15
+    XI_ALL_MASTER_DEVICES = 1
+    WHEEL_BUTTONS = (4, 5, 6, 7)
+
+    def __init__(self):
+        super().__init__()
+        self.display = None
+        self.notifier = None
+
+    def start(self):
+        """Returns False when raw input cannot be watched."""
+        try:
+            self.x11 = ctypes.CDLL("libX11.so.6")
+            self.xi = ctypes.CDLL("libXi.so.6")
+        except OSError:
+            return False
+        x11, xi = self.x11, self.xi
+        x11.XOpenDisplay.restype = ctypes.c_void_p
+        x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+        x11.XDefaultRootWindow.restype = ctypes.c_ulong
+        x11.XDefaultRootWindow.argtypes = [ctypes.c_void_p]
+        x11.XConnectionNumber.argtypes = [ctypes.c_void_p]
+        x11.XPending.argtypes = [ctypes.c_void_p]
+        x11.XNextEvent.argtypes = [ctypes.c_void_p, ctypes.POINTER(_XEvent)]
+        x11.XGetEventData.argtypes = [ctypes.c_void_p, ctypes.POINTER(_XGenericEventCookie)]
+        x11.XFreeEventData.argtypes = [ctypes.c_void_p, ctypes.POINTER(_XGenericEventCookie)]
+        x11.XQueryExtension.argtypes = [ctypes.c_void_p, ctypes.c_char_p] + [ctypes.POINTER(ctypes.c_int)] * 3
+        x11.XFlush.argtypes = [ctypes.c_void_p]
+        x11.XCloseDisplay.argtypes = [ctypes.c_void_p]
+        xi.XIQueryVersion.argtypes = [ctypes.c_void_p] + [ctypes.POINTER(ctypes.c_int)] * 2
+        xi.XISelectEvents.argtypes = [ctypes.c_void_p, ctypes.c_ulong,
+                                      ctypes.POINTER(_XIEventMask), ctypes.c_int]
+
+        display = x11.XOpenDisplay(None)
+        if not display:
+            return False
+        opcode, event, error = ctypes.c_int(), ctypes.c_int(), ctypes.c_int()
+        major, minor = ctypes.c_int(2), ctypes.c_int(2)
+        # Raw events reach a program while another one holds a grab only
+        # from XInput 2.1 on
+        if (not x11.XQueryExtension(display, b"XInputExtension", ctypes.byref(opcode),
+                                    ctypes.byref(event), ctypes.byref(error))
+                or xi.XIQueryVersion(display, ctypes.byref(major), ctypes.byref(minor)) != 0
+                or (major.value, minor.value) < (2, 1)):
+            x11.XCloseDisplay(display)
+            return False
+        self.opcode = opcode.value
+        self.mask_bytes = (ctypes.c_ubyte * 4)()
+        self.mask_bytes[self.XI_RAW_BUTTON_PRESS // 8] |= 1 << (self.XI_RAW_BUTTON_PRESS % 8)
+        mask = _XIEventMask(self.XI_ALL_MASTER_DEVICES, len(self.mask_bytes),
+                            ctypes.cast(self.mask_bytes, ctypes.POINTER(ctypes.c_ubyte)))
+        xi.XISelectEvents(display, x11.XDefaultRootWindow(display), ctypes.byref(mask), 1)
+        x11.XFlush(display)
+        self.display = display
+        self.notifier = QSocketNotifier(x11.XConnectionNumber(display),
+                                        QSocketNotifier.Type.Read, self)
+        self.notifier.activated.connect(self.read_events)
+        return True
+
+    def read_events(self, *_args):
+        """Handles every event already received. Also called before the app
+        acts on a click on its tray icon, so a press that came before that
+        click is always handled first."""
+        if self.display is None:
+            return
+        x11 = self.x11
+        event = _XEvent()
+        while x11.XPending(self.display):
+            x11.XNextEvent(self.display, ctypes.byref(event))
+            cookie = event.cookie
+            if cookie.type != self.GENERIC_EVENT or cookie.extension != self.opcode:
+                continue
+            if not x11.XGetEventData(self.display, ctypes.byref(cookie)):
+                continue
+            try:
+                if cookie.evtype == self.XI_RAW_BUTTON_PRESS:
+                    raw = ctypes.cast(cookie.data, ctypes.POINTER(_XIRawEvent)).contents
+                    if raw.detail not in self.WHEEL_BUTTONS:
+                        self.pressed.emit()
+            finally:
+                x11.XFreeEventData(self.display, ctypes.byref(cookie))
+
+
 class TrayApp(QObject):
     def __init__(self, app):
         super().__init__()
@@ -387,10 +624,31 @@ class TrayApp(QObject):
         # while it opens sends Plasma a new menu while Plasma places it.
         self.rebuild_menu()
         self.menu.aboutToShow.connect(self.on_menu_about_to_show)
-        self.tray.setContextMenu(self.menu)
-        self.tray.activated.connect(self.on_activated)
-        self.tray.show()
-        let_plasma_open_menu_on_left_click(self.tray)
+        # Under X11 the app's own tray item opens the menu on a left and a
+        # right click, above the panel. Elsewhere, or when that item cannot
+        # be registered, Qt's tray icon is used as before.
+        self.item = None
+        if self.app.platformName() != "wayland":
+            item = PlasmaTrayItem()
+            if item.start():
+                self.item = item
+                self.item.clicked.connect(self.open_menu)
+        if self.item is None:
+            self.tray.setContextMenu(self.menu)
+            self.tray.activated.connect(self.on_activated)
+            self.tray.show()
+            if self.app.platformName() == "wayland":
+                let_plasma_open_menu_on_left_click(self.tray)
+
+        # Under X11 the menu the app opens itself is closed by the app on a
+        # press outside it, also when it could not get hold of the mouse.
+        self.closed_by_press = False
+        self.presses = None
+        if self.app.platformName() == "xcb":
+            presses = MousePressWatch()
+            if presses.start():
+                self.presses = presses
+                self.presses.pressed.connect(self.on_mouse_press)
 
         BRIDGE.notification.connect(self.on_notification)
         BRIDGE.quit_requested.connect(self.app.quit)
@@ -437,11 +695,17 @@ class TrayApp(QObject):
         del self.notifications[MAX_NOTIFICATIONS:]
         show_desktop_notification(title, message, silent, self.tray)
         self.rebuild_menu()
-        self.tray.setIcon(self.icon_alert)
+        self.set_alert(True)
+
+    def set_alert(self, alert):
+        if self.item is not None:
+            self.item.set_alert(alert)
+        else:
+            self.tray.setIcon(self.icon_alert if alert else self.icon_normal)
 
     # -- menu ---------------------------------------------------------------
     def on_menu_about_to_show(self):
-        self.tray.setIcon(self.icon_normal)
+        self.set_alert(False)
 
     def rebuild_menu(self):
         self.menu.clear()
@@ -483,18 +747,42 @@ class TrayApp(QObject):
         # Right-click is handled by the context menu; a plain left-click
         # opens the same menu.
         if reason == QSystemTrayIcon.ActivationReason.Trigger:
-            self.rebuild_menu()
-            # Open the menu above the click, with its bottom at the mouse or
-            # at the top of the panel, whichever is higher. Left to itself,
-            # Qt only keeps the menu inside the whole screen, so it covers
-            # the panel.
-            cursor = QCursor.pos()
-            screen = QApplication.screenAt(cursor) or QApplication.primaryScreen()
-            free = screen.availableGeometry()
-            self.menu.ensurePolished()
-            height = self.menu.sizeHint().height()
-            bottom = min(cursor.y(), free.bottom() + 1)
-            self.menu.popup(QPoint(cursor.x(), bottom - height))
+            self.open_menu()
+
+    def on_mouse_press(self):
+        # A press outside the open menu closes it. When that press was on
+        # the tray icon, the click Plasma passes on afterwards must not open
+        # the menu again: closed_by_press tells open_menu so. Any later press
+        # starts afresh.
+        if self.menu.isVisible() and not self.menu.geometry().contains(QCursor.pos()):
+            self.closed_by_press = True
+            self.menu.hide()
+        else:
+            self.closed_by_press = False
+
+    def open_menu(self):
+        if self.presses is not None:
+            self.presses.read_events()
+        if self.closed_by_press:
+            self.closed_by_press = False
+            return
+        if self.menu.isVisible():
+            # The menu is open without hold of the mouse: a click on the
+            # tray icon closes it, as it does when the menu holds the mouse
+            self.menu.hide()
+            return
+        self.rebuild_menu()
+        # Open the menu above the click, with its bottom at the mouse or
+        # at the top of the panel, whichever is higher. Left to itself,
+        # Qt only keeps the menu inside the whole screen, so it covers
+        # the panel.
+        cursor = QCursor.pos()
+        screen = QApplication.screenAt(cursor) or QApplication.primaryScreen()
+        free = screen.availableGeometry()
+        self.menu.ensurePolished()
+        height = self.menu.sizeHint().height()
+        bottom = min(cursor.y(), free.bottom() + 1)
+        self.menu.popup(QPoint(cursor.x(), bottom - height))
 
     def show_about(self):
         if self.about is not None and self.about.isVisible():

@@ -1,6 +1,6 @@
 [project]
 name = "knotifier"
-version = "1.0.9"
+version = "1.0.12"
 description = "A system tray application for KDE Plasma that shows a desktop notification for every HTTP request it receives, for example from Home Assistant."
 requires-python = ">=3.10"
 license = "AGPL-3.0-only"
