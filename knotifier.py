@@ -31,7 +31,7 @@ from PyQt6.QtSvg import QSvgRenderer
 from PyQt6.QtWidgets import (QApplication, QCheckBox, QDialog, QLabel, QMenu,
                              QPushButton, QSystemTrayIcon, QVBoxLayout)
 
-__version__ = 'knotifier 1.0.8'
+__version__ = 'knotifier 1.0.9'
 
 
 def version():
@@ -39,6 +39,7 @@ def version():
 
 
 # --- Version history ----------------------------------------------------
+# v1.0.9: Under X11 too a left click opens the menu through Plasma, like a right click
 # v1.0.8: No code change: released with the new Chrono-style start menu icon
 # v1.0.7: Under Wayland a left click opens the menu through Plasma, like a right click
 # v1.0.6: A hyphen between the time and the message in the tray menu
@@ -337,7 +338,9 @@ def let_plasma_open_menu_on_left_click(tray):
     plugin has no call for this, so the KStatusNotifierItem it created is
     found on its D-Bus connection and its setIsMenu is called directly.
     Returns False when that is not possible; the left click then stays as it
-    is."""
+    is. Under X11 it is used as well: the menu the app opens itself there
+    sometimes stops closing on a click outside it after a notification has
+    arrived, while the menu Plasma opens always closes."""
     try:
         from PyQt6 import sip
         from PyQt6.QtDBus import QDBusConnection
@@ -387,8 +390,7 @@ class TrayApp(QObject):
         self.tray.setContextMenu(self.menu)
         self.tray.activated.connect(self.on_activated)
         self.tray.show()
-        if self.app.platformName() == "wayland":
-            let_plasma_open_menu_on_left_click(self.tray)
+        let_plasma_open_menu_on_left_click(self.tray)
 
         BRIDGE.notification.connect(self.on_notification)
         BRIDGE.quit_requested.connect(self.app.quit)
